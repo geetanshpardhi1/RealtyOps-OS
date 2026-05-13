@@ -341,6 +341,26 @@ class AlertsEvaluateResponse(BaseModel):
     alerts: list[AlertItem]
 
 
+class LeadInboxItem(BaseModel):
+    lead_id: str
+    status: str
+    qualification_state: str
+    owner_agent_id: str | None = None
+    updated_at: str | None = None
+    last_activity_at: str | None = None
+
+
+class LeadInboxResponse(BaseModel):
+    items: list[LeadInboxItem]
+    count: int
+
+
+class LeadTimelineResponse(BaseModel):
+    lead_id: str
+    items: list[dict[str, Any]]
+    count: int
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "api", "adapter_mode": get_adapter_mode()}
@@ -368,6 +388,38 @@ def get_lead(lead_id: str, lead_store: LeadStore = Depends(get_lead_store)) -> d
     if record is None:
         raise HTTPException(status_code=404, detail="lead_not_found")
     return record
+
+
+@app.get("/leads", response_model=LeadInboxResponse)
+def list_leads(
+    status: str | None = None,
+    qualification_state: str | None = None,
+    owner_agent_id: str | None = None,
+    lead_store: LeadStore = Depends(get_lead_store),
+) -> LeadInboxResponse:
+    items = _iter_leads_for_inbox(
+        lead_store=lead_store,
+        status=status,
+        qualification_state=qualification_state,
+        owner_agent_id=owner_agent_id,
+    )
+    return LeadInboxResponse(items=items, count=len(items))
+
+
+@app.get("/leads/{lead_id}/timeline", response_model=LeadTimelineResponse)
+def get_lead_timeline(
+    lead_id: str,
+    limit: int = 100,
+    lead_store: LeadStore = Depends(get_lead_store),
+    event_publisher: EventPublisher = Depends(get_event_publisher),
+) -> LeadTimelineResponse:
+    lead = lead_store.get_by_id(lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="lead_not_found")
+
+    safe_limit = max(1, min(limit, 200))
+    events = _iter_events(event_publisher=event_publisher, lead_store=lead_store, lead_id=lead_id, limit=safe_limit)
+    return LeadTimelineResponse(lead_id=lead_id, items=events, count=len(events))
 
 
 def _build_lead_contract(lead_id: str) -> dict[str, Any]:
@@ -411,7 +463,7 @@ def _accept_intake(
     _seen_source_events[source_event_id] = lead_id
 
     lead_store.create(_build_lead_contract(lead_id))
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.created",
@@ -494,7 +546,7 @@ def qualification_evaluate(
         },
     )
 
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.qualified",
@@ -548,7 +600,7 @@ def outreach_first_touch(
     whatsapp_outcome = whatsapp_sender.send_first_touch(
         payload.lead_id, payload.phone, payload.first_name
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "outreach.attempted",
@@ -565,7 +617,7 @@ def outreach_first_touch(
         email_outcome = email_sender.send_first_touch(
             payload.lead_id, str(payload.email), payload.first_name
         )
-        event_publisher.publish(
+        _publish_event(event_publisher, lead_store, 
             {
                 "event_id": f"evt_{uuid4().hex[:12]}",
                 "event_type": "outreach.attempted",
@@ -602,7 +654,7 @@ def pause_automation(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.automation_paused",
@@ -630,7 +682,7 @@ def resume_automation(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.automation_resumed",
@@ -666,7 +718,7 @@ def manual_takeover(
             "updated_at": now.isoformat(),
         },
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.manual_takeover_enabled",
@@ -707,7 +759,7 @@ def set_cadence_continuity(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.cadence_continuity_changed",
@@ -741,7 +793,7 @@ def propose_slots(
         "cycle": payload.cycle,
         "proposed_slots": list(payload.candidate_slots),
     }
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "slot.proposed",
@@ -774,7 +826,7 @@ def confirm_slot(
     winner = _slot_confirmations.get(payload.slot)
     if winner is None or winner == lead_id:
         _slot_confirmations[payload.slot] = lead_id
-        event_publisher.publish(
+        _publish_event(event_publisher, lead_store, 
             {
                 "event_id": f"evt_{uuid4().hex[:12]}",
                 "event_type": "slot.confirmed",
@@ -799,7 +851,7 @@ def confirm_slot(
     if not alternatives:
         alternatives = [f"{payload.slot}#alt1", f"{payload.slot}#alt2", f"{payload.slot}#alt3"]
 
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "slot.collision",
@@ -859,17 +911,84 @@ def _build_crm_lead_payload(lead: dict[str, Any], summary_note: str) -> dict[str
     }
 
 
+def _publish_event(event_publisher: EventPublisher, lead_store: LeadStore, event: dict[str, Any]) -> None:
+    event_publisher.publish(event)
+    append_event = getattr(lead_store, "append_event", None)
+    if callable(append_event):
+        append_event(event)
+
+
+def _iter_leads_for_inbox(
+    lead_store: LeadStore,
+    status: str | None,
+    qualification_state: str | None,
+    owner_agent_id: str | None,
+) -> list[LeadInboxItem]:
+    list_leads = getattr(lead_store, "list_leads", None)
+    if callable(list_leads):
+        records = [dict(v) for v in list_leads()]
+    else:
+        records_attr = getattr(lead_store, "records", None)
+        if isinstance(records_attr, dict):
+            records = [dict(v) for v in records_attr.values()]
+        else:
+            records = []
+
+    filtered: list[dict[str, Any]] = []
+    for record in records:
+        if status and str(record.get("status", "")) != status:
+            continue
+        if qualification_state and str(record.get("qualification_state", "")) != qualification_state:
+            continue
+        if owner_agent_id and str(record.get("owner_agent_id", "")) != owner_agent_id:
+            continue
+        filtered.append(record)
+
+    filtered.sort(
+        key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""),
+        reverse=True,
+    )
+
+    return [
+        LeadInboxItem(
+            lead_id=str(record.get("lead_id", "")),
+            status=str(record.get("status", "unknown")),
+            qualification_state=str(record.get("qualification_state", "unqualified")),
+            owner_agent_id=record.get("owner_agent_id"),
+            updated_at=record.get("updated_at"),
+            last_activity_at=record.get("last_activity_at"),
+        )
+        for record in filtered
+    ]
+
+
 def _iter_leads_for_lifecycle(lead_store: LeadStore) -> list[dict[str, Any]]:
+    list_leads = getattr(lead_store, "list_leads", None)
+    if callable(list_leads):
+        return [dict(v) for v in list_leads()]
     records = getattr(lead_store, "records", None)
     if isinstance(records, dict):
         return [dict(v) for v in records.values()]
     return []
 
 
-def _iter_events(event_publisher: EventPublisher) -> list[dict[str, Any]]:
+def _iter_events(
+    event_publisher: EventPublisher,
+    lead_store: LeadStore,
+    lead_id: str | None = None,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    list_events = getattr(lead_store, "list_events", None)
+    if callable(list_events):
+        if lead_id:
+            return [dict(v) for v in list_events(lead_id, limit)]
+        return [dict(v) for v in list_events("", limit)]
+
     events = getattr(event_publisher, "events", None)
     if isinstance(events, list):
-        return [dict(e) for e in events]
+        filtered = [dict(e) for e in events if not lead_id or str(e.get("lead_id", "")) == lead_id]
+        filtered.sort(key=lambda e: str(e.get("occurred_at", "")), reverse=True)
+        return filtered[:limit]
     return []
 
 
@@ -896,7 +1015,7 @@ def evaluate_escalation(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.booking_escalation_evaluated",
@@ -935,7 +1054,7 @@ def outreach_continuation_plan(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "outreach.continuation_planned",
@@ -973,7 +1092,7 @@ def attempt_booking(
         lead_id,
         {"booking_status": "in_progress", "updated_at": now},
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "booking.in_progress",
@@ -989,7 +1108,7 @@ def attempt_booking(
             lead_id,
             {"status": "booked", "booking_status": "confirmed", "calendar_event_id": first_event_id, "updated_at": datetime.now(timezone.utc).isoformat()},
         )
-        event_publisher.publish(
+        _publish_event(event_publisher, lead_store, 
             {
                 "event_id": f"evt_{uuid4().hex[:12]}",
                 "event_type": "booking.confirmed",
@@ -1018,7 +1137,7 @@ def attempt_booking(
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
-            event_publisher.publish(
+            _publish_event(event_publisher, lead_store, 
                 {
                     "event_id": f"evt_{uuid4().hex[:12]}",
                     "event_type": "booking.confirmed",
@@ -1039,7 +1158,7 @@ def attempt_booking(
         lead_id,
         {"status": "assigned", "booking_status": "retry_required", "updated_at": datetime.now(timezone.utc).isoformat()},
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "booking.failed",
@@ -1088,7 +1207,7 @@ def sync_lead_to_crm(
         crm_client.upsert_lead(crm_payload)
         if payload.create_escalation_task:
             crm_client.create_task(queue_item["task_payload"])
-        event_publisher.publish(
+        _publish_event(event_publisher, lead_store, 
             {
                 "event_id": f"evt_{uuid4().hex[:12]}",
                 "event_type": "crm.sync_succeeded",
@@ -1100,7 +1219,7 @@ def sync_lead_to_crm(
     except Exception:
         response.status_code = 202
         _crm_sync_queue.append(queue_item)
-        event_publisher.publish(
+        _publish_event(event_publisher, lead_store, 
             {
                 "event_id": f"evt_{uuid4().hex[:12]}",
                 "event_type": "crm.sync_queued",
@@ -1119,6 +1238,7 @@ def get_crm_sync_queue() -> CRMSyncQueueResponse:
 
 @app.post("/crm/sync-queue/retry", response_model=CRMSyncRetryResponse)
 def retry_crm_sync_queue(
+    lead_store: LeadStore = Depends(get_lead_store),
     crm_client: CRMClient = Depends(get_crm_client),
     event_publisher: EventPublisher = Depends(get_event_publisher),
 ) -> CRMSyncRetryResponse:
@@ -1134,7 +1254,7 @@ def retry_crm_sync_queue(
             remaining.append(item)
     _crm_sync_queue.clear()
     _crm_sync_queue.extend(remaining)
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "crm.sync_retry_executed",
@@ -1171,7 +1291,7 @@ def lifecycle_auto_close_run(
                 lead_id,
                 {"status": "closed", "updated_at": now.isoformat()},
             )
-            event_publisher.publish(
+            _publish_event(event_publisher, lead_store, 
                 {
                     "event_id": f"evt_{uuid4().hex[:12]}",
                     "event_type": "lead.auto_closed",
@@ -1203,7 +1323,7 @@ def lifecycle_inbound_reopen(
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             },
         )
-        event_publisher.publish(
+        _publish_event(event_publisher, lead_store, 
             {
                 "event_id": f"evt_{uuid4().hex[:12]}",
                 "event_type": "lead.auto_reopened",
@@ -1250,7 +1370,7 @@ def lifecycle_identity_merge_evaluate(
         payload.lead_id,
         {"escalation_flags": updated_flags, "updated_at": datetime.now(timezone.utc).isoformat()},
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "event_type": "lead.identity_conflict_flagged",
@@ -1286,7 +1406,7 @@ def observability_correlation_log(
             "event_type": payload.event_type,
         },
     )
-    event_publisher.publish(
+    _publish_event(event_publisher, lead_store, 
         {
             "event_id": event_id,
             "event_type": payload.event_type,
@@ -1308,7 +1428,7 @@ def observability_kpi_daily(
     event_publisher: EventPublisher = Depends(get_event_publisher),
 ) -> DailyKPIResponse:
     leads = _iter_leads_for_lifecycle(lead_store)
-    events = _iter_events(event_publisher)
+    events = _iter_events(event_publisher=event_publisher, lead_store=lead_store, limit=5000)
 
     created_by_lead: dict[str, datetime] = {}
     first_outreach_by_lead: dict[str, datetime] = {}
@@ -1357,9 +1477,10 @@ def observability_kpi_daily(
 
 @app.get("/observability/alerts/evaluate", response_model=AlertsEvaluateResponse)
 def observability_alerts_evaluate(
+    lead_store: LeadStore = Depends(get_lead_store),
     event_publisher: EventPublisher = Depends(get_event_publisher),
 ) -> AlertsEvaluateResponse:
-    events = _iter_events(event_publisher)
+    events = _iter_events(event_publisher=event_publisher, lead_store=lead_store, limit=5000)
     webhook_failed_count = sum(1 for e in events if e.get("event_type") == "webhook.failed")
     booking_failed_count = sum(1 for e in events if e.get("event_type") == "booking.failed")
     dlq_growth_total = float(sum(float(e.get("delta", 0)) for e in events if e.get("event_type") == "dlq.growth"))
