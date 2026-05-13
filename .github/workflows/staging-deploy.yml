@@ -33,6 +33,7 @@ jobs:
           gcloud run deploy realtyops-api-staging \
             --source services/api \
             --region $GCP_REGION \
+            --quiet \
             --allow-unauthenticated \
             --service-account $GCP_RUNTIME_SA \
             --set-env-vars GCP_ENABLED=true,GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID,PUBSUB_LEAD_EVENTS_TOPIC=$PUBSUB_TOPIC,FIRESTORE_DATABASE=$FIRESTORE_DATABASE
@@ -48,6 +49,7 @@ jobs:
           gcloud run deploy realtyops-worker-staging \
             --source services/worker \
             --region $GCP_REGION \
+            --quiet \
             --allow-unauthenticated \
             --service-account $GCP_RUNTIME_SA
         env:
