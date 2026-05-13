@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-05-06T06:17:53.960564+00:00",
+  "service": "services/api",
+  "test_inventory": {
+    "total_files": 18,
+    "unit_files": 8,
+    "integration_files": 9,
+    "scenario_files": 1,
+    "unit": [
+      "test_intake_meta.py",
+      "test_intake_side_effects.py",
+      "test_intake_website.py",
+      "test_lead_visibility.py",
+      "test_qualification_assignment.py",
+      "test_qualification_events.py",
+      "test_qualification_persistence.py",
+      "test_runtime_mode.py"
+    ],
+    "integration": [
+      "test_assignment_stability.py",
+      "test_autonomous_booking_gate.py",
+      "test_crm_sync.py",
+      "test_escalation_split.py",
+      "test_human_owned_controls.py",
+      "test_lifecycle_automation.py",
+      "test_observability_kpi_alerting.py",
+      "test_outreach_fallback.py",
+      "test_slot_negotiation.py"
+    ],
+    "scenario": [
+      "test_scenario_simulation.py"
+    ]
+  },
+  "latest_run": {
+    "exit_code": 0,
+    "stdout": "..........................................                               [100%]\n42 passed in 0.28s",
+    "stderr": "",
+    "passed": true
+  },
+  "reliability_claims": [
+    "Critical domain behaviors are covered by unit and integration tests.",
+    "Scenario simulations validate failure recovery paths (outreach fallback, booking retry, CRM outage queue/retry).",
+    "Evidence is reproducible via: cd services/api && .venv/bin/python scripts/generate_reliability_evidence.py"
+  ]
+}

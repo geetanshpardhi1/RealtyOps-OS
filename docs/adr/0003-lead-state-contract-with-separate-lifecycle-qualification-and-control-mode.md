@@ -1,0 +1,3 @@
+# Lead State Contract Uses Separate Lifecycle, Qualification, and Control Mode Fields
+
+RealtyOps OS V1 models lead state with separate fields for lifecycle status, qualification state, and booking control mode instead of collapsing these concerns into one enum. We decided this to keep policy decisions deterministic across parallel workflow slices: lifecycle transitions track process progress, qualification tracks booking eligibility, and control mode tracks authority boundaries between autonomous execution and brokerage-controlled decisions. In this model, `automation_paused` stops all autonomous actions while still allowing manual Brokerage Agent/admin operations.
