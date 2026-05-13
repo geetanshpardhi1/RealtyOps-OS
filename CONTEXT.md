@@ -211,6 +211,19 @@ _Avoid_: per-module ad hoc lead shapes
 - Security/maintenance pass: dependency upgrades (Next.js + Clerk migration)
 - End-to-end UX validation: login -> dashboard -> health statuses -> intake trigger demo
 
+## Active Execution Backlog (Published 2026-05-13)
+
+- Open issues:
+- #14 Lead Inbox + Timeline for Brokerage Operations
+- #15 Lead Contract Enrichment for Follow-up State
+- #16 Policy-aware Follow-up Engine in Worker (Manual Trigger + Persisted Outcomes)
+- #17 Scheduled Follow-up Runs on GCP (Cloud Scheduler -> Worker)
+- #18 Channel Provider Integration + Delivery Outcome Mapping
+- #19 Demo Acceptance Slice (One-command E2E Verification + Runbook)
+- Tracker hygiene:
+- #2 closed with verified deployment evidence
+- #20 created and closed after local/GitHub mirror synchronization
+
 ## Latest Demo Verification (2026-05-13)
 
 - Web:
