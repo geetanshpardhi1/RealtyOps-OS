@@ -171,7 +171,8 @@ _Avoid_: per-module ad hoc lead shapes
 - GitHub Actions auth uses Workload Identity Federation (no static JSON key)
 - Vercel frontend project:
 - `realtyops-os-web` under scope `geetanshpardhi1s-projects`
-- Production deploy URL: `https://realtyops-os-xlkb3uadc-geetanshpardhi1s-projects.vercel.app`
+- Production deploy URL (latest): `https://realtyops-os-ou4yswq0h-geetanshpardhi1s-projects.vercel.app`
+- Production alias: `https://realtyops-os-web.vercel.app`
 
 ## Current Frontend Runtime Notes
 
@@ -200,11 +201,26 @@ _Avoid_: per-module ad hoc lead shapes
 - Frontend deployed with env wiring to staging backends
 - Frontend production alias now serves app successfully (`/` and `/dashboard` return `200`)
 - Frontend health proxy endpoint returns `ok` for API and worker targets
+- Live intake idempotency demo validated on staging:
+- `source_event_id=evt_demo_live_001`
+- first call: `deduplicated=false`, `lead_id=lead_7bd3d469c293`
+- second same payload: `deduplicated=true`, same `lead_id`
 - Context, runbook, and bootstrap automation created
 - Pending (next practical steps):
 - Reintroduce robust server-side auth enforcement path (middleware or equivalent) after Clerk/Vercel compatibility upgrade
 - Security/maintenance pass: dependency upgrades (Next.js + Clerk migration)
 - End-to-end UX validation: login -> dashboard -> health statuses -> intake trigger demo
+
+## Latest Demo Verification (2026-05-13)
+
+- Web:
+- `GET /` on `https://realtyops-os-web.vercel.app` => `200`
+- `GET /dashboard` on `https://realtyops-os-web.vercel.app` => `200`
+- `GET /api/health?target=api` => `{"ok":true,"status":"ok"}`
+- `GET /api/health?target=worker` => `{"ok":true,"status":"ok"}`
+- Backend:
+- `GET https://realtyops-api-staging-3gpuwerbmq-el.a.run.app/health` => `{"status":"ok","service":"api","adapter_mode":"gcp"}`
+- `GET https://realtyops-worker-staging-3gpuwerbmq-el.a.run.app/health` => `{"status":"ok","service":"worker"}`
 
 ## Handoff Checklist for Next Agent/Developer
 
