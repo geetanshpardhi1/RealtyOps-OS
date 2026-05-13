@@ -99,6 +99,8 @@ _Avoid_: per-module ad hoc lead shapes
 - Staging API URL: `https://realtyops-api-staging-3gpuwerbmq-el.a.run.app`
 - Staging Worker URL: `https://realtyops-worker-staging-3gpuwerbmq-el.a.run.app`
 - Staging workflow source: `.github/workflows/staging-deploy.yml`
+- Vercel production alias: `https://realtyops-os-web.vercel.app`
+- Latest Vercel production deployment (at update time): `https://realtyops-os-ou4yswq0h-geetanshpardhi1s-projects.vercel.app`
 
 ## Operational Guardrails (Confirmed)
 
@@ -173,17 +175,20 @@ _Avoid_: per-module ad hoc lead shapes
 
 ## Current Frontend Runtime Notes
 
-- `/dashboard` uses server-side `auth()` checks and role checks.
-- Clerk middleware file was removed because Vercel Edge build failed on unsupported modules from current Clerk package/runtime combination.
+- Framework configuration for Vercel is pinned via `apps/web/vercel.json` with `"framework": "nextjs"` to avoid route-level `404` behavior seen under `Other` preset.
+- Clerk middleware file remains removed due edge/runtime incompatibility in this stack combination.
+- Home and dashboard use client-side Clerk hooks (`useUser`) for auth state and role rendering.
+- Dashboard role is currently read from `user.publicMetadata.role` on client.
 - Dashboard now reads:
 - `NEXT_PUBLIC_API_BASE_URL`
 - `NEXT_PUBLIC_WORKER_BASE_URL`
-- Dashboard performs server-side health fetches to both backend URLs and surfaces status.
+- Dashboard health checks are routed via same-origin Next route `GET /api/health` to avoid browser CORS issues and to keep endpoint wiring centralized.
 
 ## Known Constraints / Risks
 
-- Vercel deployment currently returns `401` on production URL due deployment/project protection settings (authentication gate in Vercel), not app crash.
-- One alias (`realtyops-os-web.vercel.app`) returned `404` during verification while deployment alias existed in inspect output; likely alias/protection propagation/config nuance in Vercel settings.
+- Vercel route-level `404` issue has been resolved by explicit Next.js framework config + fresh deployment.
+- Clerk server `auth()` path was removed from pages to avoid runtime failures without middleware; this is a pragmatic stability choice, not final security hardening.
+- Authorization on dashboard is UI-level role gating; sensitive backend actions must still be protected server-side in API services.
 - Next.js `14.2.5` and some web dependencies are deprecated/vulnerable per install warnings; upgrade hardening is pending.
 - Clerk packages in use include deprecated modules (`@clerk/clerk-react`, `@clerk/types`) via transitive setup; migration cleanup pending.
 
@@ -193,11 +198,11 @@ _Avoid_: per-module ad hoc lead shapes
 - Core V1 backend behavior and tests implemented
 - Staging backend deployed and reachable (`/health` ok)
 - Frontend deployed with env wiring to staging backends
+- Frontend production alias now serves app successfully (`/` and `/dashboard` return `200`)
+- Frontend health proxy endpoint returns `ok` for API and worker targets
 - Context, runbook, and bootstrap automation created
 - Pending (next practical steps):
-- Verify and adjust Vercel protection/domain settings so external users can access app without Vercel auth gate
-- Add/confirm a stable public production alias
-- Optional re-introduction of middleware protection only after Clerk/Vercel-compatible runtime approach
+- Reintroduce robust server-side auth enforcement path (middleware or equivalent) after Clerk/Vercel compatibility upgrade
 - Security/maintenance pass: dependency upgrades (Next.js + Clerk migration)
 - End-to-end UX validation: login -> dashboard -> health statuses -> intake trigger demo
 
@@ -212,5 +217,6 @@ _Avoid_: per-module ad hoc lead shapes
 - `CLERK_SECRET_KEY`
 - `NEXT_PUBLIC_API_BASE_URL`
 - `NEXT_PUBLIC_WORKER_BASE_URL`
+- Confirm `apps/web/vercel.json` remains present with Next.js framework config in future refactors.
 - Check current GitHub Actions runs for `staging-deploy.yml`.
 - If tackling frontend auth hardening, treat Clerk+Vercel edge compatibility as first-class constraint.
