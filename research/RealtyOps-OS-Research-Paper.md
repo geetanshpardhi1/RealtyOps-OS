@@ -1,5 +1,7 @@
 # RealtyOps OS Research Paper
 
+Glossary note: Canonical domain terms for this project are defined in `CONTEXT.md` and take precedence over local wording in this document.
+
 ## 1. Executive Summary
 RealtyOps OS is a business-focused, single-agent AI system designed for real-estate brokerage teams. It converts inbound leads into scheduled property tours through autonomous execution with hybrid human oversight. The product is positioned as a Conversion Engine and built for measurable business outcomes, not chatbot engagement.
 
@@ -65,17 +67,20 @@ A lead qualifies for autonomous booking only when these fields are valid:
 - Phone/email verified
 
 ### 7.3 Escalation to Human
-Escalate to broker/agent when:
+Escalate booking control to Brokerage Agent when:
 - Qualification fields are missing or contradictory.
 - Scheduling constraints conflict.
 - Confidence score falls below threshold.
 
+Outreach continuation policy:
+- Even after booking escalation, follow-up outreach cadence may continue unless paused by Brokerage Agent/admin.
+
 ## 8. Follow-Up Strategy
 ### 8.1 Cadence Policy
-3-step automated follow-up, then human handoff.
+Automated follow-up with human-aware controls.
 
 ### 8.2 Exact Sequence
-1. T+5 min: WhatsApp/email intro + booking slot link
+1. T+5 min: WhatsApp intro + booking slot link (email fallback only on WhatsApp failure)
 2. T+24 hr: Personalized reminder with two suggested slots
 3. T+72 hr: Urgency message + broker-assist option
 4. If no response: mark as Needs Human Follow-up

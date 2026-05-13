@@ -1,5 +1,7 @@
 # RealtyOps OS V1 Implementation Blueprint
 
+Glossary note: Canonical domain terms for this project are defined in `CONTEXT.md` and take precedence over local wording in this document.
+
 ## 1. Objective
 Build and deploy a production-credible V1 single-agent system that converts inbound real-estate leads into scheduled tours with hybrid human oversight.
 
@@ -32,7 +34,7 @@ Primary business outcome: increase booked tours by reducing response delay and f
 ## 3.1 Frontend
 - Next.js dashboard on Vercel
 - Clerk authentication
-- Roles: admin, assigned owner-agent, viewer
+- Roles: admin, assigned Brokerage Agent, viewer
 
 ## 3.2 Backend Services (GCP)
 - Cloud Run service 1: `api`
@@ -66,7 +68,7 @@ Primary business outcome: increase booked tours by reducing response delay and f
 4. `api` publishes `lead.created` event to Pub/Sub.
 5. `worker` consumes event and runs ADK qualification step.
 6. If required info is missing, escalate to human immediately (`needs_human`) and create CRM task + ops email.
-7. If qualified enough, run assignment logic and set `owner_agent_id`.
+7. If lead reaches Partially Qualified, run assignment logic and set `owner_agent_id`.
 8. Send first outreach via WhatsApp.
 9. If WhatsApp undelivered/fails, fallback to email.
 10. If lead engages, negotiate slots (3 slots per cycle, max 2 cycles).
@@ -75,7 +77,7 @@ Primary business outcome: increase booked tours by reducing response delay and f
 13. Booking is confirmed only after calendar event creation succeeds.
 14. Send confirmation acknowledgment only after booking success.
 15. Publish CRM mirror updates through `crm-sync` topic/consumer.
-16. Run automated follow-ups by default when needed; owner/admin can pause per lead.
+16. Run automated follow-ups by default when needed; Brokerage Agent/admin can pause per lead.
 17. Auto-close lead after 14 days of inactivity.
 18. Auto-reopen if any new inbound reply arrives.
 
@@ -84,8 +86,8 @@ Primary business outcome: increase booked tours by reducing response delay and f
 - AI is execution layer, not accountable owner.
 - Human owner is the accountable broker/agent assigned to lead.
 - Assignment occurs after qualification/routing.
-- Only assigned owner + admin can pause/resume automation and execute sensitive manual controls.
-- Owner can force-book with mandatory reason note in audit trail.
+- Only assigned Brokerage Agent + admin can pause/resume automation and execute sensitive manual controls.
+- Brokerage Agent can force-book with mandatory reason note in audit trail.
 
 ## 6. State Machine (V1)
 
@@ -104,12 +106,12 @@ Core statuses:
 Transition highlights:
 - `new -> qualifying` after event ingestion
 - `qualifying -> needs_human` if required fields missing
-- `qualifying -> assigned` when qualified + routing complete
+- `qualifying -> assigned` when Partially Qualified + routing complete
 - `assigned -> outreach_sent` after first send attempt
 - `outreach_sent -> negotiating` on engagement
 - `negotiating -> pending_confirmation` on verbal slot acceptance
 - `pending_confirmation -> tour_scheduled` only on calendar success
-- `* -> paused` by owner/admin toggle
+- `* -> paused` by Brokerage Agent/admin toggle
 - `closed -> assigned/negotiating` on inbound reactivation
 
 ## 7. ADK Toolset (Small Fixed Set)
@@ -154,7 +156,7 @@ Notes:
 
 ## 8.3 Audit Requirements
 Track every critical action with:
-- actor (`system` | `owner` | `admin`)
+- actor (`system` | `brokerage_agent` | `admin`)
 - action
 - reason (mandatory for force-book/manual override)
 - timestamp
@@ -185,6 +187,11 @@ Contract rules:
 ## 10. Booking and Concurrency Rules
 
 - Single shared Tours Calendar.
+- Autonomous booking gate for AI confirmation:
+  - lead is Fully Qualified
+  - confidence >= 0.80 (global V1 threshold)
+  - no active escalation flags
+  - calendar event creation succeeds
 - First confirmed booking wins.
 - If second lead collides on same slot:
   - immediate unavailability acknowledgment
@@ -195,7 +202,7 @@ Contract rules:
 
 Default:
 - Automation follow-ups enabled.
-- Pause/resume allowed for owner/admin.
+- Pause/resume allowed for Brokerage Agent/admin.
 
 Stop automation triggers:
 - not interested
@@ -206,6 +213,11 @@ Stop automation triggers:
 Escalate immediately for:
 - missing required qualification fields
 - complex property/legal/negotiation questions
+- low or borderline confidence for booking decisions
+
+After booking escalation:
+- continue outreach cadence at T+24h and T+72h unless paused
+- do not attempt autonomous booking while escalated
 
 ## 12. Reliability, Error Handling, and SRE Baseline
 
@@ -321,7 +333,7 @@ Guardrails:
 
 ### Phase 5: Follow-ups + CRM Mirror (Day 21-24)
 1. Implement follow-up scheduling with business-window and weekend skip rules.
-2. Implement pause/resume controls (owner/admin only).
+2. Implement pause/resume controls (Brokerage Agent/admin only).
 3. Build separate `crm-sync` consumer.
 4. Add auto-close (14 days) and auto-reopen on inbound reply.
 

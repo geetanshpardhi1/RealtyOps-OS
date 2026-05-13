@@ -11,6 +11,8 @@ Populate `.env.example` values as needed.
 Web required for Clerk:
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_WORKER_BASE_URL`
 
 ## 3) Run API
 ```bash
@@ -74,3 +76,14 @@ REGION=asia-south1 \
 REPO=geetanshpardhi1/RealtyOps-OS \
 ./scripts/gcp_bootstrap.sh
 ```
+
+## 9) Vercel Frontend Wiring (Staging Backends)
+Set these env vars in Vercel project settings:
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your_clerk_publishable_key>`
+- `CLERK_SECRET_KEY=<your_clerk_secret_key>`
+- `NEXT_PUBLIC_API_BASE_URL=https://realtyops-api-staging-3gpuwerbmq-el.a.run.app`
+- `NEXT_PUBLIC_WORKER_BASE_URL=https://realtyops-worker-staging-3gpuwerbmq-el.a.run.app`
+
+After setting vars, redeploy the Vercel project and verify `/dashboard` shows:
+- API health status `ok`
+- Worker health status `ok`

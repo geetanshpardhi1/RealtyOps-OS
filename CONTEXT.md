@@ -78,3 +78,139 @@ _Avoid_: per-module ad hoc lead shapes
 - "human-owned" was confused with manual-only execution — resolved: it defines accountability and override authority, not channel execution exclusivity.
 - "booking confirmation" was ambiguous between accepted intent and confirmed schedule — resolved via **Autonomous Booking Gate**.
 - "lead schema" risked fragmenting across parallel tracks — resolved by canonical **Lead Contract**.
+
+## Technical Baseline (V1)
+
+- Frontend: Next.js (`apps/web`) with Clerk authentication and role-gated dashboard
+- API service: FastAPI (`services/api`) deployed on Cloud Run
+- Worker service: FastAPI (`services/worker`) deployed on Cloud Run
+- Primary data store: Firestore (`(default)` database)
+- Event bus: Pub/Sub topic `lead-events`
+- CI/CD: GitHub Actions staging deploy via Workload Identity Federation (OIDC), no static GCP JSON keys
+- Frontend hosting target: Vercel
+- Backend hosting target: Google Cloud Run
+
+## Deployment Context (As of 2026-05-13)
+
+- Active GCP project id: `steel-aileron-475104-a5`
+- Active GCP project display name: `RealtyOps OS`
+- Cloud Run region: `asia-south1`
+- Runtime service account pattern: dedicated deployer SA + dedicated runtime SA
+- Staging API URL: `https://realtyops-api-staging-3gpuwerbmq-el.a.run.app`
+- Staging Worker URL: `https://realtyops-worker-staging-3gpuwerbmq-el.a.run.app`
+- Staging workflow source: `.github/workflows/staging-deploy.yml`
+
+## Operational Guardrails (Confirmed)
+
+- Outreach channel order: WhatsApp first, email fallback if WhatsApp fails
+- Booking is confirmed only after calendar event creation succeeds
+- Low-confidence or borderline leads escalate immediately for booking decisions
+- Outreach cadence may continue during booking escalation unless paused
+- Cadence approval is a single continuity control, not per-message approval
+
+## Project Scope and Goal (V1)
+
+- Build a production-oriented lead-operations OS for brokerages where AI handles intake, qualification, outreach cadence, slot negotiation, and booking operations with explicit human accountability controls.
+- Target outcome: reliable first-run demo + deployable staging system with observable health, deterministic lead-state transitions, and audit-friendly behavior.
+- Current delivery status: backend staging is live on GCP Cloud Run; frontend is live on Vercel with Clerk auth and role-gated dashboard.
+
+## Repo Map (What Lives Where)
+
+- `apps/web`: Next.js UI + Clerk auth + role-gated `/dashboard`
+- `services/api`: FastAPI orchestration service (intake, qualification, outreach, booking, escalation, lifecycle, observability APIs)
+- `services/worker`: FastAPI worker service for async/background service role
+- `services/api/tests`: test pyramid coverage for V1 behavior
+- `evidence/reliability-evidence.json`: generated reliability artifact
+- `issues/`: local mirror of implementation issues
+- `.github/workflows/staging-deploy.yml`: Cloud Run staging deploy workflow
+- `scripts/gcp_bootstrap.sh`: one-shot GCP + GitHub secret bootstrap script
+- `docs/FIRST_RUN_DEMO.md`: local/staging runbook
+
+## Implemented Capabilities (Completed)
+
+- Intake:
+- Website intake endpoint with idempotency by `source_event_id`
+- Dedup behavior validated (`deduplicated=false` then `true` on replay)
+- Qualification and assignment:
+- Lead qualification states include Partially Qualified and Fully Qualified semantics
+- Assignment gate at Partially Qualified before ownership assignment
+- Outreach:
+- WhatsApp-first flow with email fallback strategy
+- Automation pause/manual control options on lead
+- Slot negotiation and booking:
+- Shared tour calendar model
+- Multi-cycle slot proposal logic and conflict handling
+- Booking confirmation only after calendar event creation success
+- Escalation and human controls:
+- Immediate booking escalation for low-confidence/borderline cases
+- Outreach continuation allowed during booking escalation unless paused
+- Human-owned control model with takeover and cadence continuity switch
+- Lifecycle and CRM:
+- Auto-close window set to 14 days inactivity
+- Auto-reopen allowed on inbound activity
+- CRM sync handling with retry/queue + outage-aware behavior
+- Observability:
+- Health endpoints for API and worker
+- KPI/alerting and reliability evidence path in repo
+
+## Deployment and Infra State (Verified)
+
+- GCP project:
+- `project_id`: `steel-aileron-475104-a5`
+- `project_name`: `RealtyOps OS`
+- `region`: `asia-south1`
+- Cloud Run services:
+- API: `https://realtyops-api-staging-3gpuwerbmq-el.a.run.app`
+- Worker: `https://realtyops-worker-staging-3gpuwerbmq-el.a.run.app`
+- Service accounts:
+- Deployer: `github-deployer@steel-aileron-475104-a5.iam.gserviceaccount.com`
+- Runtime: `realtyops-runtime@steel-aileron-475104-a5.iam.gserviceaccount.com`
+- WIF/OIDC deploy path:
+- GitHub Actions auth uses Workload Identity Federation (no static JSON key)
+- Vercel frontend project:
+- `realtyops-os-web` under scope `geetanshpardhi1s-projects`
+- Production deploy URL: `https://realtyops-os-xlkb3uadc-geetanshpardhi1s-projects.vercel.app`
+
+## Current Frontend Runtime Notes
+
+- `/dashboard` uses server-side `auth()` checks and role checks.
+- Clerk middleware file was removed because Vercel Edge build failed on unsupported modules from current Clerk package/runtime combination.
+- Dashboard now reads:
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_WORKER_BASE_URL`
+- Dashboard performs server-side health fetches to both backend URLs and surfaces status.
+
+## Known Constraints / Risks
+
+- Vercel deployment currently returns `401` on production URL due deployment/project protection settings (authentication gate in Vercel), not app crash.
+- One alias (`realtyops-os-web.vercel.app`) returned `404` during verification while deployment alias existed in inspect output; likely alias/protection propagation/config nuance in Vercel settings.
+- Next.js `14.2.5` and some web dependencies are deprecated/vulnerable per install warnings; upgrade hardening is pending.
+- Clerk packages in use include deprecated modules (`@clerk/clerk-react`, `@clerk/types`) via transitive setup; migration cleanup pending.
+
+## What Is Done vs Pending
+
+- Done:
+- Core V1 backend behavior and tests implemented
+- Staging backend deployed and reachable (`/health` ok)
+- Frontend deployed with env wiring to staging backends
+- Context, runbook, and bootstrap automation created
+- Pending (next practical steps):
+- Verify and adjust Vercel protection/domain settings so external users can access app without Vercel auth gate
+- Add/confirm a stable public production alias
+- Optional re-introduction of middleware protection only after Clerk/Vercel-compatible runtime approach
+- Security/maintenance pass: dependency upgrades (Next.js + Clerk migration)
+- End-to-end UX validation: login -> dashboard -> health statuses -> intake trigger demo
+
+## Handoff Checklist for Next Agent/Developer
+
+- Read this file + `docs/FIRST_RUN_DEMO.md` first.
+- Verify backend health endpoints:
+- API: `/health`
+- Worker: `/health`
+- Confirm Vercel project env vars exist:
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_WORKER_BASE_URL`
+- Check current GitHub Actions runs for `staging-deploy.yml`.
+- If tackling frontend auth hardening, treat Clerk+Vercel edge compatibility as first-class constraint.

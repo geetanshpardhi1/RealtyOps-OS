@@ -1,5 +1,7 @@
 ## Problem Statement
 
+Glossary note: Canonical domain terms for this project are defined in `CONTEXT.md` and take precedence over local wording in this document.
+
 Real-estate brokerage teams lose qualified demand because inbound leads are not handled with consistent speed and follow-through. Current operations are fragmented across lead sources, CRM, calendar, and messaging channels, creating manual bottlenecks, slow first response, inconsistent follow-up, and weak lead ownership accountability. The business impact is lower tour bookings and revenue leakage.
 
 The team needs a production-credible V1 system that autonomously executes lead-to-tour workflows with guardrails, human-in-the-loop control, and measurable operational outcomes.
@@ -9,7 +11,7 @@ The team needs a production-credible V1 system that autonomously executes lead-t
 Build RealtyOps OS V1 as a single-agent, execution-first Conversion Engine that:
 
 - Ingests leads from website forms and Meta campaigns.
-- Qualifies leads and routes ownership to a human brokerage agent.
+- Qualifies leads and routes ownership to a human Brokerage Agent.
 - Executes outreach via WhatsApp first, with email fallback only on WhatsApp failure.
 - Negotiates tour slots using shared calendar availability and books tours.
 - Escalates to human ownership under strict handoff rules.
@@ -27,11 +29,11 @@ This V1 is implemented with Next.js (Vercel), Python/FastAPI services on Cloud R
 5. As an AI agent, I want to qualify leads against required fields, so that downstream booking actions are policy-compliant.
 6. As an AI agent, I want to escalate immediately when required qualification fields are missing, so that humans resolve risky ambiguity early.
 7. As a brokerage manager, I want lead ownership assigned to a human agent after qualification/routing, so that accountability is explicit.
-8. As an assigned owner agent, I want to see my lead queue and state transitions, so that I can prioritize action.
+8. As an assigned Brokerage Agent, I want to see my lead queue and state transitions, so that I can prioritize action.
 9. As an AI system, I want to send first-touch outreach on WhatsApp, so that response probability is maximized.
 10. As an AI system, I want email fallback only when WhatsApp fails or is undelivered, so that channel policy remains consistent.
 11. As an AI system, I want automatic follow-ups by default, so that lead decay is reduced without manual intervention.
-12. As an owner agent, I want to pause or resume automation per lead, so that I can safely take manual control.
+12. As a Brokerage Agent, I want to pause or resume automation per lead, so that I can safely take manual control.
 13. As an admin, I want override control over automation state, so that operational recovery is possible.
 14. As an AI system, I want weekend follow-ups skipped, so that outreach aligns with business policy.
 15. As an AI system, I want business-hour queueing in office timezone, so that outreach timing is operationally coherent.
@@ -43,7 +45,10 @@ This V1 is implemented with Next.js (Vercel), Python/FastAPI services on Cloud R
 21. As operations, I want first-confirmed slot conflict rules, so that concurrent booking behavior is deterministic.
 22. As operations, I want CRM task creation on escalation, so that handoff is system-of-record visible.
 23. As operations, I want instant escalation alerts to a single ops inbox, so that human response starts quickly.
-24. As an owner agent, I want forced booking allowed with mandatory reason capture, so that exceptional cases can be handled with auditability.
+24. As a Brokerage Agent, I want forced booking allowed with mandatory reason capture, so that exceptional cases can be handled with auditability.
+41. As a Brokerage Agent, I want low-confidence booking decisions escalated to me immediately while outreach can still continue, so that safety and conversion are both preserved.
+42. As a Brokerage Agent, I want one cadence continuity approval control in human-owned mode, so that I can allow or stop follow-ups without per-message approvals.
+43. As an operations lead, I want post-escalation follow-ups at T+24h and T+72h, so that lead momentum continues without autonomous booking attempts.
 25. As compliance stakeholders, I want no AI hard commitments on pricing/inventory certainty, so that messaging remains safe.
 26. As operations, I want stop-automation triggers on opt-out or abuse signals, so that consent and safety are respected.
 27. As operations, I want human callback requests to force handoff, so that customer intent is honored.
@@ -69,8 +74,12 @@ This V1 is implemented with Next.js (Vercel), Python/FastAPI services on Cloud R
 - Workflow state source of truth is Firestore; HubSpot is a synchronized business-facing mirror.
 - Event backbone uses Pub/Sub with separate domains for lead workflow and CRM sync, with dead-letter handling.
 - Ingestion enforces mandatory idempotency before processing to prevent duplicate workflows.
+- Qualification policy distinguishes Partially Qualified and Fully Qualified states; assignment occurs at Partially Qualified.
 - Qualification policy escalates immediately to human if required fields are missing.
-- Ownership policy assigns a human `owner_agent` post-qualification/routing; only owner/admin can pause or resume automation.
+- Ownership policy assigns a human `owner_agent` post-qualification/routing; only Brokerage Agent/admin can pause or resume automation.
+- Booking policy allows autonomous confirmation only when Autonomous Booking Gate passes: Fully Qualified lead, confidence >= 0.80, no active escalation flags, and successful calendar event creation.
+- Low or borderline confidence routes to immediate booking escalation while outreach continuation remains allowed.
+- Human-owned mode uses a single cadence continuity approval control rather than per-message approvals.
 - Slot negotiation policy uses three proposals per cycle, maximum two cycles, then escalation.
 - Booking confirmation policy requires successful calendar event creation before customer confirmation is sent.
 - Concurrency policy is first-confirmed-wins with automated alternatives for losing collisions.
@@ -104,7 +113,7 @@ Proposed deep modules (stable interfaces, high internal complexity):
 - Priority test modules:
   - Ingestion idempotency and duplicate suppression
   - Qualification + escalation policy
-  - Ownership permissions (owner/admin control semantics)
+  - Ownership permissions (Brokerage Agent/admin control semantics)
   - Slot negotiation cycle limits and fallback behavior
   - Booking confirmation gate and collision handling
   - CRM decoupled sync under outage conditions

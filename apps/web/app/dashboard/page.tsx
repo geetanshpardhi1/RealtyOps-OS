@@ -12,6 +12,30 @@ function getRole(sessionClaims: Record<string, unknown> | null | undefined): str
   return typeof role === "string" ? role : "guest";
 }
 
+type HealthState = {
+  ok: boolean;
+  status: string;
+};
+
+function trimTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+async function fetchHealth(baseUrl: string): Promise<HealthState> {
+  const url = `${trimTrailingSlash(baseUrl)}/health`;
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return { ok: false, status: `http_${response.status}` };
+    }
+    const json = (await response.json()) as Record<string, unknown>;
+    const status = typeof json.status === "string" ? json.status : "unknown";
+    return { ok: status === "ok", status };
+  } catch {
+    return { ok: false, status: "unreachable" };
+  }
+}
+
 export default async function DashboardPage() {
   const { userId, sessionClaims } = await auth();
   if (!userId) redirect("/");
@@ -25,6 +49,12 @@ export default async function DashboardPage() {
       ? roleFromUser
       : roleFromClaims;
   const allowed = role === "admin" || role === "brokerage_agent" || role === "operations";
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  const workerBaseUrl = process.env.NEXT_PUBLIC_WORKER_BASE_URL ?? "http://localhost:8001";
+  const [apiHealth, workerHealth] = await Promise.all([
+    fetchHealth(apiBaseUrl),
+    fetchHealth(workerBaseUrl),
+  ]);
 
   return (
     <main className="container">
@@ -43,10 +73,19 @@ export default async function DashboardPage() {
         <>
           <p>Access granted.</p>
           <ul>
-            <li>API health: <code>/health</code></li>
-            <li>Worker health: <code>/health</code> (worker service)</li>
+            <li>
+              API health:{" "}
+              <code>{trimTrailingSlash(apiBaseUrl)}/health</code> ({apiHealth.status})
+            </li>
+            <li>
+              Worker health:{" "}
+              <code>{trimTrailingSlash(workerBaseUrl)}/health</code> ({workerHealth.status})
+            </li>
             <li>Evidence: <code>/evidence/reliability-evidence.json</code> in repo</li>
           </ul>
+          {!apiHealth.ok || !workerHealth.ok ? (
+            <p>Warning: one or more backend services are unreachable from the web app runtime.</p>
+          ) : null}
         </>
       )}
     </main>
