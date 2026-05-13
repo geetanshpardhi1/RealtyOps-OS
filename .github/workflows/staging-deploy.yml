@@ -1,0 +1,56 @@
+name: Staging Deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy-api-worker:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.GCP_PROJECT_ID != '' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure project
+        run: gcloud config set project "$GCP_PROJECT_ID"
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy API to Cloud Run (staging)
+        run: |
+          gcloud run deploy realtyops-api-staging \
+            --source services/api \
+            --region $GCP_REGION \
+            --allow-unauthenticated \
+            --service-account $GCP_RUNTIME_SA \
+            --set-env-vars GCP_ENABLED=true,GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID,PUBSUB_LEAD_EVENTS_TOPIC=$PUBSUB_TOPIC,FIRESTORE_DATABASE=$FIRESTORE_DATABASE
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          PUBSUB_TOPIC: ${{ secrets.PUBSUB_LEAD_EVENTS_TOPIC }}
+          FIRESTORE_DATABASE: ${{ secrets.FIRESTORE_DATABASE }}
+          GCP_RUNTIME_SA: ${{ secrets.GCP_RUNTIME_SA }}
+
+      - name: Deploy Worker to Cloud Run (staging)
+        run: |
+          gcloud run deploy realtyops-worker-staging \
+            --source services/worker \
+            --region $GCP_REGION \
+            --allow-unauthenticated \
+            --service-account $GCP_RUNTIME_SA
+        env:
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_RUNTIME_SA: ${{ secrets.GCP_RUNTIME_SA }}
